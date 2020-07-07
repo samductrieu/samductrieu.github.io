@@ -1,0 +1,214 @@
+residual.analysis <- function(model, std = TRUE,start = 2, class = c("ARIMA","GARCH","ARMA-GARCH")[1]){
+  # If you have an output from arima() function use class = "ARIMA"
+  # If you have an output from garch() function use class = "GARCH"
+  # If you have an output from ugarchfit() function use class = "ARMA-GARCH"
+  library(TSA)
+  library(FitAR)
+  if (class == "ARIMA"){
+    if (std == TRUE){
+      res.model = rstandard(model)
+    }else{
+      res.model = residuals(model)
+    }
+  }else if (class == "GARCH"){
+    res.model = model$residuals[start:model$n.used]
+  }else if (class == "ARMA-GARCH"){
+    res.model = model@fit$residuals
+  }else {
+    stop("The argument 'class' must be either 'ARIMA' or 'GARCH' ")
+  }
+  par(mfrow=c(3,2))
+  plot(res.model,type='o',ylab='Standardised residuals', main="Time series plot of standardised residuals")
+  abline(h=0)
+  hist(res.model,main="Histogram of standardised residuals")
+  acf(res.model,main="ACF of standardised residuals")
+  pacf(res.model,main="PACF of standardised residuals")
+  qqnorm(res.model,main="QQ plot of standardised residuals")
+  qqline(res.model, col = 2)
+  print(shapiro.test(res.model))
+  k=0
+  LBQPlot(res.model, lag.max = 30, StartLag = k + 1, k = 0, SquaredQ = FALSE)
+}
+
+library(TSA)
+library(dplyr)
+library(readxl)
+library(tseries)
+library(forecast)
+library(fUnitRoots)
+library(CombMSC)
+library(lmtest)
+library(fGarch)
+library(rugarch)
+library(tswge)
+
+bitcoin=read.csv("D:/Master of Analytics/Sem 1 2018/MATH1318 - Time Series Analysis/Assignment 3/BTC.csv")
+class(bitcoin)
+head(bitcoin)
+BTCPrice=bitcoin[75:1,2]
+bitcoin=as.vector(t(BTCPrice))
+bitcoin=ts(as.vector(bitcoin),start=c(2012,3), frequency = 12)
+plot(bitcoin,type="o",ylab='Bitcoin Price (USD)',main="Time series of Bitcoin Price form March 2012 to May 2018")
+points(y=bitcoin,x=time(bitcoin), pch=as.vector(season(bitcoin)))
+
+plot(y=bitcoin,x=zlag(bitcoin),ylab='Bitcoin price (USD)',xlab='Previous monthly bitcoin price',main="Scatter plot of monthly bitcoin price")
+y=bitcoin
+x=zlag(bitcoin)
+index=2:length(x)
+cor(y[index],x[index])
+McLeod.Li.test(y=bitcoin, main ="McLeod-Li Test Statistics for Monthly Bitcoin price")
+
+#Absolute value and square transformation
+abs.bitcoin=abs(bitcoin)
+sq.bitcoin=bitcoin^2
+par(mfrow=c(1,2))
+acf(abs.bitcoin,ci.type="ma",main="The sample ACF plot for absolute return series")
+pacf(abs.bitcoin,main="The sample PACF plot for absolute return series")
+eacf(abs.bitcoin)
+par(mfrow=c(1,2))
+acf(sq.bitcoin,ci.type="ma",main="The sample ACF plot for squared return series")
+pacf(sq.bitcoin,main="The sample PACF plot for squared return series")
+eacf(sq.bitcoin)
+
+#AUTOREGRESSION PROCESSES OF THE TIME SERIES
+#1st order autoregression process
+plot(bitcoin,ylab=expression(Y[t]),type='o',main="Time series plot for the AR(1) process")
+par(mfrow=c(1,2))
+acf(bitcoin, main="ACF plot for the simulated AR(1) process")
+pacf(bitcoin, main="PACF plot for the simulated AR(1) process")
+plot(y=bitcoin,x=zlag(bitcoin),ylab=expression(Y[t]),xlab=expression(Y[t-1]),type='p',main=paste0("Scatter plot of ",expression(Y[t]),"versus",expression(Y[t-1]),"for the simulated AR(1) process"))
+plot(y=bitcoin,x=zlag(bitcoin,2),ylab=expression(Y[t]),xlab=expression(Y[t-2]),type='p',main=paste0("Scatter plot of ",expression(Y[t]),"versus",expression(Y[t-2]),"for the simulated AR(1) process"))
+plot(y=bitcoin,x=zlag(bitcoin,3),ylab=expression(Y[t]),xlab=expression(Y[t-3]),type='p',main=paste0("Scatter plot of ",expression(Y[t]),"versus",expression(Y[t-3]),"for the simulated AR(1) process"))
+
+#ADF and PP test
+adf.test(bitcoin)
+pp.test(bitcoin)
+
+#LINEAR TREND IN TIME
+model1=lm(bitcoin~time(bitcoin))
+summary(model1) 
+plot(bitcoin,type='o',ylab='y')
+abline(model1)
+res.model1=rstudent(model1)
+plot(y=res.model1,x=as.vector(time(bitcoin)),xlab='Time',ylab='Standardized Residuals',type='p')
+hist(rstudent(model1),xlab='Standardized Residuals')
+qqnorm(res.model1)
+qqline(res.model1,com=2,lwd=1,lty=2)
+shapiro.test(res.model1)
+acf(rstudent(model1),main="ACF of standardized residuals")
+
+#QUADRATIC TREND IN TIME
+t=time(bitcoin)
+t2=t^2
+model2=lm(bitcoin~t+t2)
+summary(model2)
+plot(ts(fitted(model2)),ylim=c(min(c(fitted(model2),as.vector(bitcoin))),max(c(fitted(model2),as.vector(bitcoin)))),ylab='y', main="Fitted quadratic curve to Bitcoin price data")
+lines(as.vector(bitcoin),type="o")
+res.model2=rstudent(model2)
+plot(y=res.model2,x=as.vector(time(bitcoin)),xlab='Time',ylab='Standardized Residuals',type='p')
+abline(h=0)
+qqnorm(res.model2)
+qqline(res.model2,com=2,lwd=1,lty=2)
+shapiro.test(res.model2)
+acf(rstudent(model2))
+
+arima.bitcoin=arima.sim(list(order=c(2,2,1),ar=c(0.19,0.6),ma=0.1),n=100)
+plot(arima.bitcoin)
+write.table(arima.bitcoin,file="data.sim.csv",row.names=FALSE,col.names=FALSE)
+
+bitcoin.transform=BoxCox.ar(bitcoin)
+bitcoin.transform=BoxCox.ar(bitcoin,method="yule-walker")
+bitcoin.transform$ci 
+
+lambda=0.05
+BC.bitcoin=log(bitcoin)
+par(mfrow=c(1,1))
+plot(BC.bitcoin)
+
+#DIFFERENCING
+diff.bitcoin=diff(bitcoin,differences=1)
+plot(diff.bitcoin,type='o',ylab='Monthly bitcoin price')
+adf.test(diff.bitcoin)
+par(mfrow=c(1,2))
+acf(diff.bitcoin)
+pacf(diff.bitcoin)
+eacf(diff.bitcoin,ar.max=8, ma.max=8)
+res=armasubsets(y=diff.bitcoin,nar=8,nma=8,y.name='test',ar.method='ols')
+plot(res)
+
+model_111_css=arima(bitcoin,order=c(1,1,1),method='CSS')
+coeftest(model_111_css)
+model_111_ml=arima(bitcoin,order=c(1,1,1),method='ML')
+coeftest(model_111_ml)
+
+model_013_css=arima(bitcoin,order=c(0,1,3),method='CSS')
+coeftest(model_013_css)
+model_013_ml=arima(bitcoin,order=c(0,1,3),method='ML')
+coeftest(model_013_ml)
+
+model_112_css=arima(bitcoin,order=c(1,1,2),method='CSS')
+coeftest(model_112_css)
+model_112_ml=arima(bitcoin,order=c(1,1,2),method='ML')
+coeftest(model_112_ml)
+
+model_414_css=arima(bitcoin,order=c(4,1,4),method='CSS')
+coeftest(model_414_css)
+model_414_ml=arima(bitcoin,order=c(4,1,4),method='ML')
+coeftest(model_414_ml)
+
+model_712_css=arima(bitcoin,order=c(7,1,2),method='CSS')
+coeftest(model_712_css)
+model_712_ml=arima(bitcoin,order=c(7,1,2),method='ML')
+coeftest(model_712_ml)
+
+sort.score(AIC(model_111_ml,model_112_ml,model_013_ml,model_414_ml,model_712_ml),score="aic")
+
+#ARIMA(2,1,2):
+model_212_css=arima(bitcoin,order=c(2,1,2),method='CSS')
+coeftest(model_212_css)
+model_212_ml=arima(bitcoin,order=c(2,1,2),method='ML')
+coeftest(model_212_ml)
+
+#ARIMA(1,1,3):
+model_113_css=arima(bitcoin,order=c(1,1,3),method='CSS')
+coeftest(model_113_css)
+model_113_ml=arima(bitcoin,order=c(1,1,3),method='ML')
+coeftest(model_113_ml)
+
+sort.score(AIC(model_112_ml, model_212_ml,model_113_ml),score="aic")
+
+residual.analysis <- function(model, std = TRUE,start = 2, class = c("ARIMA","GARCH","ARMA-GARCH")[1]){
+  # If you have an output from arima() function use class = "ARIMA"
+  # If you have an output from garch() function use class = "GARCH"
+  # If you have an output from ugarchfit() function use class = "ARMA-GARCH"
+  library(TSA)
+  library(FitAR)
+  if (class == "ARIMA"){
+    if (std == TRUE){
+      res.model = rstandard(model)
+    }else{
+      res.model = residuals(model)
+    }
+  }else if (class == "GARCH"){
+    res.model = model$residuals[start:model$n.used]
+  }else if (class == "ARMA-GARCH"){
+    res.model = model@fit$residuals
+  }else {
+    stop("The argument 'class' must be either 'ARIMA' or 'GARCH' ")
+  }
+  par(mfrow=c(3,2))
+  plot(res.model,type='o',ylab='Standardised residuals', main="Time series plot of standardised residuals")
+  abline(h=0)
+  hist(res.model,main="Histogram of standardised residuals")
+  acf(res.model,main="ACF of standardised residuals")
+  pacf(res.model,main="PACF of standardised residuals")
+  qqnorm(res.model,main="QQ plot of standardised residuals")
+  qqline(res.model, col = 2)
+  print(shapiro.test(res.model))
+  k=0
+  LBQPlot(res.model, lag.max = 30, StartLag = k + 1, k = 0, SquaredQ = FALSE)
+}
+residual.analysis(model=model_112_ml)
+
+fit=Arima(bitcoin,c(1,1,2),lambda = 0.05)
+plot(forecast(fit,h=10))
